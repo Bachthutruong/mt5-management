@@ -26,7 +26,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
 
 // --- CONFIGURATION ---
-const API_BASE = "/api";
+const API_BASE = "https://bot.jiudi.cloud/api";
 axios.defaults.timeout = 15000; 
 
 const SidebarItem = ({ icon: Icon, label, active, onClick }) => (
