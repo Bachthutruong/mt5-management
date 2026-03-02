@@ -1,17 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  LayoutDashboard, 
-  History, 
-  Settings as SettingsIcon, 
-  Terminal, 
-  TrendingUp, 
-  TrendingDown, 
-  DollarSign, 
-  Percent, 
+import { useState, useEffect } from 'react';
+import {
+  LayoutDashboard,
+  History,
+  Settings as SettingsIcon,
+  Terminal,
+  TrendingUp,
+  TrendingDown,
+  DollarSign,
+  Percent,
   Activity,
-  ChevronRight,
   LogOut,
-  Bell,
   RefreshCw,
   Cpu,
   ShieldCheck,
@@ -21,14 +19,14 @@ import {
   PlusSquare,
   BarChart2
 } from 'lucide-react';
-import { 
+import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
 import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
 
 // --- CONFIGURATION ---
-const API_BASE = "https://bot.jiudi.cloud/api";
+const API_BASE = "/api";
 axios.defaults.timeout = 15000; 
 
 const SidebarItem = ({ icon: Icon, label, active, onClick }) => (
@@ -82,10 +80,16 @@ const App = () => {
   const [error, setError] = useState(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
-  // Filters
+  // Log filters
   const [selectedLogSymbol, setSelectedLogSymbol] = useState(null);
-  const [historyFilter, setHistoryFilter] = useState('');
   const [newSymbol, setNewSymbol] = useState('');
+
+  // History filters & pagination
+  const [historySymbol, setHistorySymbol] = useState('ALL');
+  const [historySearch, setHistorySearch] = useState('');
+  const [historyDays, setHistoryDays] = useState(30);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyRows, setHistoryRows] = useState(25);
 
   const fetchData = async () => {
     try {
@@ -93,7 +97,7 @@ const App = () => {
       const [accRes, posRes, histRes, logRes, symRes] = await Promise.all([
         axios.get(`${API_BASE}/account`),
         axios.get(`${API_BASE}/positions`),
-        axios.get(`${API_BASE}/history?days=7`),
+        axios.get(`${API_BASE}/history?days=${historyDays}`),
         axios.get(`${API_BASE}/logs?symbol=${selectedLogSymbol || ''}&lines=50`),
         axios.get(`${API_BASE}/symbols`)
       ]);
@@ -102,11 +106,9 @@ const App = () => {
       setHistory(histRes.data);
       setLogs(logRes.data);
       setSymbols(symRes.data);
-      
       if (!selectedLogSymbol && symRes.data.length > 0) {
         setSelectedLogSymbol(symRes.data[0]);
       }
-      
       setError(null);
     } catch (err) {
       console.error(err);
@@ -118,16 +120,44 @@ const App = () => {
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 15000); 
+    const interval = setInterval(fetchData, 15000);
     return () => clearInterval(interval);
-  }, [selectedLogSymbol]);
+  }, [selectedLogSymbol, historyDays]);
 
   const todayPnl = history.reduce((sum, trade) => sum + trade.profit, 0);
   const winRate = history.length > 0 ? (history.filter(t => t.profit > 0).length / history.length * 100) : 0;
-  
-  const filteredHistory = history.filter(h => 
-    h.symbol.toLowerCase().includes(historyFilter.toLowerCase())
-  );
+
+  // History — filter + sort newest first + paginate
+  const filteredHistory = [...history]
+    .filter(h => historySymbol === 'ALL' || h.symbol === historySymbol)
+    .filter(h => {
+      if (!historySearch) return true;
+      const q = historySearch.toLowerCase();
+      return h.symbol.toLowerCase().includes(q) || String(h.ticket).includes(q);
+    })
+    .sort((a, b) => new Date(b.time) - new Date(a.time));
+
+  const totalPages = Math.max(1, Math.ceil(filteredHistory.length / historyRows));
+  const pagedHistory = filteredHistory.slice((historyPage - 1) * historyRows, historyPage * historyRows);
+
+  // Summary stats for filtered result
+  const histWins   = filteredHistory.filter(t => t.profit > 0).length;
+  const histLosses = filteredHistory.filter(t => t.profit < 0).length;
+  const histPnl    = filteredHistory.reduce((s, t) => s + t.profit, 0);
+
+  // Unique symbols from history for filter tabs
+  const historySymbols = ['ALL', ...Array.from(new Set(history.map(h => h.symbol))).sort()];
+
+  const equityCurveData = [...history]
+    .sort((a, b) => new Date(a.time) - new Date(b.time))
+    .reduce((acc, trade) => {
+      const last = acc.length > 0 ? acc[acc.length - 1].cumPnL : 0;
+      acc.push({
+        time: trade.time.slice(5, 16),
+        cumPnL: +(last + trade.profit).toFixed(2)
+      });
+      return acc;
+    }, []);
 
   const handleAddSymbol = async (e) => {
     e.preventDefault();
@@ -262,6 +292,38 @@ const App = () => {
                   <StatCard title="Win Rate" value={winRate} prefix="" subValue="%" icon={Percent} />
                 </div>
 
+                {/* P&L Equity Curve */}
+                {equityCurveData.length > 0 && (
+                  <div className="glass-card rounded-3xl p-4 lg:p-6 flex flex-col gap-4">
+                    <div className="flex justify-between items-center">
+                      <h3 className="font-bold text-base lg:text-lg flex items-center gap-2">
+                        <TrendingUp size={18} className="text-success" /> 7-Day P&amp;L Curve
+                      </h3>
+                      <span className={`text-sm font-bold font-mono ${todayPnl >= 0 ? 'text-success' : 'text-error'}`}>
+                        {todayPnl >= 0 ? '+' : ''}${todayPnl.toFixed(2)}
+                      </span>
+                    </div>
+                    <ResponsiveContainer width="100%" height={160}>
+                      <AreaChart data={equityCurveData} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
+                        <defs>
+                          <linearGradient id="pnlGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#6366f1" stopOpacity={0.4} />
+                            <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                        <XAxis dataKey="time" tick={{ fill: '#6b7280', fontSize: 10 }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+                        <YAxis tick={{ fill: '#6b7280', fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={v => `$${v}`} />
+                        <Tooltip
+                          contentStyle={{ background: '#1a1b23', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, fontSize: 12 }}
+                          formatter={v => [`$${v}`, 'Cum. P&L']}
+                        />
+                        <Area type="monotone" dataKey="cumPnL" stroke="#6366f1" strokeWidth={2} fill="url(#pnlGrad)" dot={false} activeDot={{ r: 4 }} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
                   {/* Positions */}
                   <div className="lg:col-span-2 glass-card rounded-3xl p-4 lg:p-6 flex flex-col gap-4 min-h-[300px]">
@@ -362,44 +424,175 @@ const App = () => {
             )}
 
             {activeTab === 'history' && (
-              <motion.div key="history" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.98 }} className="glass-card rounded-3xl p-4 lg:p-6 overflow-hidden mx-2">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-                    <h3 className="font-bold text-base lg:text-lg">Recent Performance (24h)</h3>
-                    <div className="relative w-full sm:w-64">
-                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-                        <input 
-                            type="text" 
-                            placeholder="Filter by Symbol (e.g. XAUUSD)"
-                            value={historyFilter}
-                            onChange={(e) => setHistoryFilter(e.target.value)}
-                            className="w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-4 py-2 text-xs focus:ring-1 focus:ring-primary outline-none transition-all"
-                        />
-                    </div>
-                </div>
-                <div className="overflow-x-auto -mx-4 px-4 lg:mx-0 lg:px-0">
-                  <table className="w-full text-left min-w-[600px]">
-                    <thead>
-                      <tr className="text-[10px] lg:text-xs font-bold text-gray-500 uppercase border-b border-white/5">
-                        <th className="pb-4">Ticket</th><th className="pb-4">Symbol</th><th className="pb-4">Vol</th><th className="pb-4">Entry</th><th className="pb-4">Time</th><th className="pb-4 text-right">P&L</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-white/5 font-mono text-sm">
-                      {filteredHistory.length === 0 ? (
-                        <tr><td colSpan="6" className="py-10 text-center text-gray-500 italic">No historical data records found</td></tr>
-                      ) : filteredHistory.map((t, i) => (
-                        <tr key={i} className="hover:bg-white/5 transition-colors group">
-                          <td className="py-4 text-[10px] text-gray-500 group-hover:text-white transition-colors">#{t.ticket}</td>
-                          <td className="py-4 font-bold text-primary">{t.symbol}</td>
-                          <td className="py-4 text-xs font-bold">{t.volume}</td>
-                          <td className="py-4 text-[10px] opacity-70">{t.price.toFixed(2)}</td>
-                          <td className="py-4 text-[10px] opacity-50">{t.time}</td>
-                          <td className={`py-4 text-right font-bold ${t.profit >= 0 ? 'text-success' : 'text-error'}`}>
-                              {t.profit >= 0 ? '+' : ''}${t.profit.toFixed(2)}
-                          </td>
-                        </tr>
+              <motion.div key="history" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.98 }} className="flex flex-col gap-4 mx-2 pb-6">
+
+                {/* ── Toolbar ── */}
+                <div className="glass-card rounded-3xl p-4 lg:p-5 flex flex-col gap-4">
+                  {/* Row 1: Symbol tabs + Days selector */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {historySymbols.map(sym => (
+                      <button
+                        key={sym}
+                        onClick={() => { setHistorySymbol(sym); setHistoryPage(1); }}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                          historySymbol === sym
+                            ? 'bg-gradient-main text-white shadow-md'
+                            : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white border border-white/10'
+                        }`}
+                      >
+                        {sym === 'ALL' ? 'All Symbols' : sym}
+                      </button>
+                    ))}
+                    <div className="ml-auto flex items-center gap-2">
+                      <span className="text-[10px] text-gray-500 font-semibold uppercase">Period:</span>
+                      {[7, 14, 30].map(d => (
+                        <button
+                          key={d}
+                          onClick={() => { setHistoryDays(d); setHistoryPage(1); }}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                            historyDays === d
+                              ? 'bg-white/20 text-white'
+                              : 'bg-white/5 text-gray-500 hover:bg-white/10 hover:text-white'
+                          }`}
+                        >
+                          {d}d
+                        </button>
                       ))}
-                    </tbody>
-                  </table>
+                    </div>
+                  </div>
+
+                  {/* Row 2: Search + Summary */}
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                    <div className="relative flex-1 w-full">
+                      <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                      <input
+                        type="text"
+                        placeholder="Tìm theo symbol hoặc ticket..."
+                        value={historySearch}
+                        onChange={e => { setHistorySearch(e.target.value); setHistoryPage(1); }}
+                        className="w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-4 py-2 text-xs focus:ring-1 focus:ring-primary outline-none transition-all"
+                      />
+                    </div>
+                    {/* Summary chips */}
+                    <div className="flex items-center gap-2 flex-wrap shrink-0">
+                      <span className="px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-[10px] font-bold text-gray-300">
+                        {filteredHistory.length} lệnh
+                      </span>
+                      <span className="px-3 py-1.5 rounded-xl bg-success/10 border border-success/20 text-[10px] font-bold text-success">
+                        WIN {histWins}
+                      </span>
+                      <span className="px-3 py-1.5 rounded-xl bg-error/10 border border-error/20 text-[10px] font-bold text-error">
+                        LOSS {histLosses}
+                      </span>
+                      <span className={`px-3 py-1.5 rounded-xl border text-[10px] font-bold font-mono ${histPnl >= 0 ? 'bg-success/10 border-success/20 text-success' : 'bg-error/10 border-error/20 text-error'}`}>
+                        {histPnl >= 0 ? '+' : ''}${histPnl.toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── Table ── */}
+                <div className="glass-card rounded-3xl overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left min-w-[620px]">
+                      <thead>
+                        <tr className="text-[10px] font-bold text-gray-500 uppercase border-b border-white/5 bg-white/2">
+                          <th className="px-4 lg:px-6 py-3">#</th>
+                          <th className="px-2 py-3">Thời gian</th>
+                          <th className="px-2 py-3">Symbol</th>
+                          <th className="px-2 py-3">Loại</th>
+                          <th className="px-2 py-3">Vol</th>
+                          <th className="px-2 py-3">Giá đóng</th>
+                          <th className="px-2 py-3 text-right pr-4 lg:pr-6">P&amp;L</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5 font-mono text-xs lg:text-sm">
+                        {pagedHistory.length === 0 ? (
+                          <tr>
+                            <td colSpan="7" className="py-16 text-center text-gray-500 italic">
+                              Không có dữ liệu giao dịch
+                            </td>
+                          </tr>
+                        ) : pagedHistory.map((t, i) => (
+                          <tr key={t.ticket} className="hover:bg-white/5 transition-colors group">
+                            <td className="px-4 lg:px-6 py-3 text-gray-600 group-hover:text-gray-400 transition-colors">
+                              #{t.ticket}
+                            </td>
+                            <td className="px-2 py-3 text-gray-400 text-[10px] whitespace-nowrap">{t.time}</td>
+                            <td className="px-2 py-3 font-bold text-primary">{t.symbol}</td>
+                            <td className="px-2 py-3">
+                              <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${t.type === 'BUY' ? 'bg-success/15 text-success' : 'bg-error/15 text-error'}`}>
+                                {t.type}
+                              </span>
+                            </td>
+                            <td className="px-2 py-3 text-gray-300">{t.volume}</td>
+                            <td className="px-2 py-3 text-gray-400">{t.price.toFixed(t.symbol.includes('JPY') ? 3 : 2)}</td>
+                            <td className={`px-2 py-3 text-right pr-4 lg:pr-6 font-bold ${t.profit >= 0 ? 'text-success' : 'text-error'}`}>
+                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg ${t.profit >= 0 ? 'bg-success/10' : 'bg-error/10'}`}>
+                                {t.profit >= 0 ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
+                                {t.profit >= 0 ? '+' : ''}${t.profit.toFixed(2)}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* ── Pagination footer ── */}
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 lg:px-6 py-4 border-t border-white/5">
+                    <div className="flex items-center gap-2 text-xs text-gray-500">
+                      <span>Hiển thị</span>
+                      <select
+                        value={historyRows}
+                        onChange={e => { setHistoryRows(Number(e.target.value)); setHistoryPage(1); }}
+                        className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-white text-xs outline-none focus:border-primary"
+                      >
+                        {[10, 25, 50, 100].map(n => <option key={n} value={n} className="bg-neutral-900">{n}</option>)}
+                      </select>
+                      <span>/ {filteredHistory.length} lệnh</span>
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => setHistoryPage(p => Math.max(1, p - 1))}
+                        disabled={historyPage === 1}
+                        className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-xs font-bold disabled:opacity-30 hover:bg-white/10 transition-colors"
+                      >
+                        ‹ Prev
+                      </button>
+
+                      {Array.from({ length: Math.min(5, totalPages) }, (_, idx) => {
+                        const start = Math.max(1, Math.min(historyPage - 2, totalPages - 4));
+                        const page = start + idx;
+                        return page <= totalPages ? (
+                          <button
+                            key={page}
+                            onClick={() => setHistoryPage(page)}
+                            className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${
+                              historyPage === page
+                                ? 'bg-gradient-main text-white shadow-md'
+                                : 'bg-white/5 border border-white/10 text-gray-400 hover:bg-white/10 hover:text-white'
+                            }`}
+                          >
+                            {page}
+                          </button>
+                        ) : null;
+                      })}
+
+                      <button
+                        onClick={() => setHistoryPage(p => Math.min(totalPages, p + 1))}
+                        disabled={historyPage === totalPages}
+                        className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-xs font-bold disabled:opacity-30 hover:bg-white/10 transition-colors"
+                      >
+                        Next ›
+                      </button>
+                    </div>
+
+                    <span className="text-[10px] text-gray-600">
+                      Trang {historyPage} / {totalPages}
+                    </span>
+                  </div>
                 </div>
               </motion.div>
             )}
