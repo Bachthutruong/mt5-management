@@ -102,11 +102,11 @@ const App = () => {
         axios.get(`${API_BASE}/symbols`)
       ]);
       setAccount(accRes.data);
-      setPositions(posRes.data);
-      setHistory(histRes.data);
-      setLogs(logRes.data);
-      setSymbols(symRes.data);
-      if (!selectedLogSymbol && symRes.data.length > 0) {
+      setPositions(Array.isArray(posRes.data) ? posRes.data : []);
+      setHistory(Array.isArray(histRes.data) ? histRes.data : []);
+      setLogs(Array.isArray(logRes.data) ? logRes.data : []);
+      setSymbols(Array.isArray(symRes.data) ? symRes.data : []);
+      if (!selectedLogSymbol && Array.isArray(symRes.data) && symRes.data.length > 0) {
         setSelectedLogSymbol(symRes.data[0]);
       }
       setError(null);
@@ -124,11 +124,12 @@ const App = () => {
     return () => clearInterval(interval);
   }, [selectedLogSymbol, historyDays]);
 
-  const todayPnl = history.reduce((sum, trade) => sum + trade.profit, 0);
-  const winRate = history.length > 0 ? (history.filter(t => t.profit > 0).length / history.length * 100) : 0;
+  const safeHistory = Array.isArray(history) ? history : [];
+  const todayPnl = safeHistory.reduce((sum, trade) => sum + (trade.profit || 0), 0);
+  const winRate = safeHistory.length > 0 ? (safeHistory.filter(t => t.profit > 0).length / safeHistory.length * 100) : 0;
 
   // History — filter + sort newest first + paginate
-  const filteredHistory = [...history]
+  const filteredHistory = [...safeHistory]
     .filter(h => historySymbol === 'ALL' || h.symbol === historySymbol)
     .filter(h => {
       if (!historySearch) return true;
@@ -143,18 +144,18 @@ const App = () => {
   // Summary stats for filtered result
   const histWins   = filteredHistory.filter(t => t.profit > 0).length;
   const histLosses = filteredHistory.filter(t => t.profit < 0).length;
-  const histPnl    = filteredHistory.reduce((s, t) => s + t.profit, 0);
+  const histPnl    = filteredHistory.reduce((s, t) => s + (t.profit || 0), 0);
 
   // Unique symbols from history for filter tabs
-  const historySymbols = ['ALL', ...Array.from(new Set(history.map(h => h.symbol))).sort()];
+  const historySymbols = ['ALL', ...Array.from(new Set(safeHistory.map(h => h.symbol))).sort()];
 
-  const equityCurveData = [...history]
+  const equityCurveData = [...safeHistory]
     .sort((a, b) => new Date(a.time) - new Date(b.time))
     .reduce((acc, trade) => {
       const last = acc.length > 0 ? acc[acc.length - 1].cumPnL : 0;
       acc.push({
-        time: trade.time.slice(5, 16),
-        cumPnL: +(last + trade.profit).toFixed(2)
+        time: (trade.time || "").slice(5, 16),
+        cumPnL: +(last + (trade.profit || 0)).toFixed(2)
       });
       return acc;
     }, []);
