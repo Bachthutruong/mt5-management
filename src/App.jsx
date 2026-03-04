@@ -17,7 +17,8 @@ import {
   Filter,
   Search,
   PlusSquare,
-  BarChart2
+  BarChart2,
+  Newspaper
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
@@ -90,6 +91,7 @@ const App = () => {
   const [historyDays, setHistoryDays] = useState(30);
   const [historyPage, setHistoryPage] = useState(1);
   const [historyRows, setHistoryRows] = useState(25);
+  const [newsData, setNewsData] = useState({});
 
   const fetchData = async () => {
     try {
@@ -123,6 +125,19 @@ const App = () => {
     const interval = setInterval(fetchData, 15000);
     return () => clearInterval(interval);
   }, [selectedLogSymbol, historyDays]);
+
+  const fetchNews = async () => {
+    try {
+      const res = await axios.get(`${API_BASE}/news`);
+      setNewsData(res.data || {});
+    } catch (err) { /* silent — news is optional */ }
+  };
+
+  useEffect(() => {
+    fetchNews();
+    const newsInterval = setInterval(fetchNews, 300000); // refresh mỗi 5 phút
+    return () => clearInterval(newsInterval);
+  }, []);
 
   const safeHistory = Array.isArray(history) ? history : [];
   const todayPnl = safeHistory.reduce((sum, trade) => sum + (trade.profit || 0), 0);
@@ -190,6 +205,7 @@ const App = () => {
         <SidebarItem icon={History} label="Trade History" active={activeTab === 'history'} onClick={() => { setActiveTab('history'); setIsSidebarOpen(false); }} />
         <SidebarItem icon={Terminal} label="Real-time Logs" active={activeTab === 'logs'} onClick={() => { setActiveTab('logs'); setIsSidebarOpen(false); }} />
         <SidebarItem icon={SettingsIcon} label="Trading Setup" active={activeTab === 'settings'} onClick={() => { setActiveTab('settings'); setIsSidebarOpen(false); }} />
+        <SidebarItem icon={Newspaper} label="Market News" active={activeTab === 'news'} onClick={() => { setActiveTab('news'); setIsSidebarOpen(false); fetchNews(); }} />
       </nav>
 
       <div className="mt-auto pt-6 border-t border-white/10 flex flex-col gap-4">
@@ -643,6 +659,114 @@ const App = () => {
                 </div>
               </motion.div>
             )}
+            {activeTab === 'news' && (
+              <motion.div key="news" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="flex flex-col gap-4 mx-2">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xl font-bold flex items-center gap-2"><Newspaper size={20} className="text-secondary" /> Market News Analysis</h2>
+                  <button onClick={fetchNews} className="flex items-center gap-2 text-xs text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 px-3 py-2 rounded-xl transition-all">
+                    <RefreshCw size={13} /> Làm mới
+                  </button>
+                </div>
+
+                {['XAUUSD', 'USDJPY'].map(sym => {
+                  const nd = newsData[sym];
+                  if (!nd) return (
+                    <div key={sym} className="glass-card bg-neutral-900/50 rounded-2xl p-5 text-gray-500 text-sm">
+                      ⏳ Chưa có dữ liệu tin tức {sym}... Bot cần chạy ít nhất 1 chu kỳ phân tích.
+                    </div>
+                  );
+
+                  const scoreColor = nd.sentiment_score > 0.2 ? 'text-green-400' : nd.sentiment_score < -0.2 ? 'text-red-400' : 'text-gray-400';
+                  const strengthBadge = ({
+                    STRONG_BULLISH: 'bg-green-500/20 text-green-400 border border-green-500/30',
+                    BULLISH:        'bg-green-500/10 text-green-300 border border-green-500/20',
+                    NEUTRAL:        'bg-gray-500/20 text-gray-400 border border-gray-500/20',
+                    BEARISH:        'bg-red-500/10 text-red-300 border border-red-500/20',
+                    STRONG_BEARISH: 'bg-red-500/20 text-red-400 border border-red-500/30',
+                  })[nd.news_strength] || 'bg-gray-500/20 text-gray-400';
+
+                  const scoreBarPct = Math.abs(nd.sentiment_score || 0) * 100;
+                  const scoreBarLeft = nd.sentiment_score < 0 ? `${(1 + nd.sentiment_score) * 50}%` : '50%';
+
+                  const srcLabel = { finnhub: 'FH', alphavantage: 'AV', marketaux: 'MA' };
+
+                  return (
+                    <div key={sym} className="glass-card bg-neutral-900/50 rounded-2xl p-5 space-y-4">
+                      {/* Header */}
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <div className="flex items-center gap-3">
+                          <span className="font-bold text-lg">{sym}</span>
+                          <span className={`px-3 py-1 rounded-full text-xs font-semibold ${strengthBadge}`}>{nd.news_strength}</span>
+                          {nd.contradiction && <span className="px-2 py-1 rounded-full text-xs bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">⚠️ Mâu thuẫn</span>}
+                          {nd.blackout_active && <span className="px-2 py-1 rounded-full text-xs bg-orange-500/20 text-orange-400 border border-orange-500/30">🚫 Blackout</span>}
+                        </div>
+                        <span className="text-xs text-gray-500">
+                          📡 {nd.active_sources}/3 nguồn &nbsp;·&nbsp; 🕒 {nd.timestamp ? new Date(nd.timestamp).toLocaleTimeString('vi-VN') : 'N/A'}
+                        </span>
+                      </div>
+
+                      {/* Score meter */}
+                      <div className="flex items-center gap-4">
+                        <span className={`text-3xl font-bold tabular-nums ${scoreColor}`}>
+                          {(nd.sentiment_score >= 0 ? '+' : '') + (nd.sentiment_score?.toFixed(3) ?? '0.000')}
+                        </span>
+                        <div className="flex-1">
+                          <div className="relative h-2 bg-white/10 rounded-full overflow-hidden">
+                            <div className="absolute top-0 bottom-0 w-px bg-white/30" style={{ left: '50%' }} />
+                            <div
+                              className={`absolute top-0 bottom-0 rounded-full ${nd.sentiment_score >= 0 ? 'bg-green-500' : 'bg-red-500'}`}
+                              style={{ width: `${scoreBarPct / 2}%`, left: scoreBarLeft }}
+                            />
+                          </div>
+                          <div className="flex justify-between text-[10px] text-gray-600 mt-1 px-0.5">
+                            <span>-1.0 BEARISH</span><span className="text-gray-500">{nd.direction}</span><span>BULLISH +1.0</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Source breakdown */}
+                      <div className="grid grid-cols-3 gap-2">
+                        {['finnhub', 'alphavantage', 'marketaux'].map(src => {
+                          const v = nd.source_scores?.[src];
+                          const c = v > 0 ? 'text-green-400' : v < 0 ? 'text-red-400' : 'text-gray-500';
+                          return (
+                            <div key={src} className="bg-white/5 rounded-xl p-3 text-center">
+                              <div className="text-gray-500 text-[10px] uppercase font-semibold mb-1">{srcLabel[src]}</div>
+                              <div className={`font-bold text-sm tabular-nums ${c}`}>
+                                {v != null ? (v >= 0 ? '+' : '') + v.toFixed(3) : 'N/A'}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Headlines */}
+                      {nd.top_headlines?.length > 0 && (
+                        <div className="space-y-2">
+                          <div className="text-[11px] text-gray-500 font-semibold uppercase tracking-wider">
+                            Bài báo liên quan · {nd.news_count} bài phân tích ({nd.bullish_signals}🟢 / {nd.bearish_signals}🔴)
+                          </div>
+                          {nd.top_headlines.map((h, i) => (
+                            <div key={i} className="flex items-start gap-2 text-sm text-gray-300 leading-relaxed bg-white/3 rounded-xl px-3 py-2">
+                              <span className="shrink-0 mt-0.5 text-gray-600">•</span>
+                              <span>{h}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Summary */}
+                      {nd.summary && (
+                        <div className="text-xs text-gray-500 bg-white/3 rounded-xl px-3 py-2 leading-relaxed">
+                          {nd.summary}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </motion.div>
+            )}
+
           </AnimatePresence>
         </main>
       </div>
