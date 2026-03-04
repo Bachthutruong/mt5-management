@@ -740,8 +740,53 @@ const App = () => {
                         })}
                       </div>
 
-                      {/* Headlines */}
-                      {nd.top_headlines?.length > 0 && (
+                      {/* Article Details — clickable links with URL + timestamp + source */}
+                      {nd.article_details?.length > 0 ? (
+                        <div className="space-y-2">
+                          <div className="text-[11px] text-gray-500 font-semibold uppercase tracking-wider">
+                            Bài báo đã đọc · {nd.news_count} bài tổng · {nd.article_details.length} bài khớp keyword ({nd.bullish_signals}🟢 / {nd.bearish_signals}🔴)
+                          </div>
+                          {nd.article_details.map((art, i) => {
+                            const sentIcon = art.score > 0 ? '🟢' : art.score < 0 ? '🔴' : '⚪';
+                            const sentColor = art.score > 0 ? 'text-green-400' : art.score < 0 ? 'text-red-400' : 'text-gray-500';
+                            const srcBadge = {
+                              Finnhub: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+                              AlphaVantage: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+                              MarketAux: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
+                            }[art.source] || 'bg-gray-500/20 text-gray-400 border-gray-500/30';
+                            const pubTime = art.published_at
+                              ? new Date(art.published_at).toLocaleString('vi-VN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                              : '';
+                            return (
+                              <div key={i} className="flex items-start gap-2 leading-relaxed bg-white/3 rounded-xl px-3 py-2.5 hover:bg-white/5 transition-colors">
+                                <span className="shrink-0 mt-0.5 text-base">{sentIcon}</span>
+                                <div className="flex-1 min-w-0">
+                                  {art.url ? (
+                                    <a href={art.url} target="_blank" rel="noopener noreferrer"
+                                      className="text-sm text-gray-200 hover:text-white hover:underline transition-colors line-clamp-2 block">
+                                      {art.title || '(no title)'}
+                                    </a>
+                                  ) : (
+                                    <span className="text-sm text-gray-300 line-clamp-2 block">{art.title || '(no title)'}</span>
+                                  )}
+                                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                    <span className={`text-[10px] px-1.5 py-0.5 rounded border ${srcBadge} font-semibold`}>{art.source}</span>
+                                    {pubTime && <span className="text-[10px] text-gray-600">🕒 {pubTime}</span>}
+                                    {art.score !== 0 && (
+                                      <span className={`text-[10px] font-mono font-bold ${sentColor}`}>
+                                        {art.score > 0 ? '+' : ''}{art.score}
+                                      </span>
+                                    )}
+                                    {art.keywords?.length > 0 && (
+                                      <span className="text-[10px] text-gray-600">🔑 {art.keywords.slice(0, 4).join(', ')}</span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : nd.top_headlines?.length > 0 && (
                         <div className="space-y-2">
                           <div className="text-[11px] text-gray-500 font-semibold uppercase tracking-wider">
                             Bài báo liên quan · {nd.news_count} bài phân tích ({nd.bullish_signals}🟢 / {nd.bearish_signals}🔴)
