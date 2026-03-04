@@ -763,13 +763,18 @@ const App = () => {
                                 <div className="flex-1 min-w-0">
                                   {art.url ? (
                                     <a href={art.url} target="_blank" rel="noopener noreferrer"
-                                      className="text-sm text-gray-200 hover:text-white hover:underline transition-colors line-clamp-2 block">
+                                      className="text-sm font-medium text-gray-200 hover:text-white hover:underline transition-colors line-clamp-2 block">
                                       {art.title || '(no title)'}
                                     </a>
                                   ) : (
-                                    <span className="text-sm text-gray-300 line-clamp-2 block">{art.title || '(no title)'}</span>
+                                    <span className="text-sm font-medium text-gray-300 line-clamp-2 block">{art.title || '(no title)'}</span>
                                   )}
-                                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                  {art.summary && (
+                                    <p className="text-[11px] text-gray-500 mt-1 leading-relaxed line-clamp-2">
+                                      {art.summary}
+                                    </p>
+                                  )}
+                                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                                     <span className={`text-[10px] px-1.5 py-0.5 rounded border ${srcBadge} font-semibold`}>{art.source}</span>
                                     {pubTime && <span className="text-[10px] text-gray-600">🕒 {pubTime}</span>}
                                     {art.score !== 0 && (
