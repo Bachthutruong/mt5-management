@@ -18,7 +18,9 @@ import {
   Search,
   PlusSquare,
   BarChart2,
-  Newspaper
+  Newspaper,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
@@ -92,6 +94,7 @@ const App = () => {
   const [historyPage, setHistoryPage] = useState(1);
   const [historyRows, setHistoryRows] = useState(25);
   const [newsData, setNewsData] = useState({});
+  const [newsCollapsed, setNewsCollapsed] = useState({ XAUUSD: true, USDJPY: true, BTCUSD: true });
 
   const fetchData = async () => {
     try {
@@ -668,11 +671,23 @@ const App = () => {
                   </button>
                 </div>
 
-                {['XAUUSD', 'USDJPY'].map(sym => {
+                {['XAUUSD', 'USDJPY', 'BTCUSD'].map(sym => {
                   const nd = newsData[sym];
+                  const isCollapsed = newsCollapsed[sym] ?? true;
+                  const toggleCollapse = () => setNewsCollapsed(prev => ({ ...prev, [sym]: !prev[sym] }));
+
                   if (!nd) return (
-                    <div key={sym} className="glass-card bg-neutral-900/50 rounded-2xl p-5 text-gray-500 text-sm">
-                      ⏳ Chưa có dữ liệu tin tức {sym}... Bot cần chạy ít nhất 1 chu kỳ phân tích.
+                    <div key={sym} className="glass-card bg-neutral-900/50 rounded-2xl overflow-hidden">
+                      <button onClick={toggleCollapse} className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/3 transition-colors">
+                        <div className="flex items-center gap-3">
+                          <span className="font-bold text-lg">{sym}</span>
+                          <span className="px-3 py-1 rounded-full text-xs font-semibold bg-gray-500/20 text-gray-500 border border-gray-500/20">Chưa có dữ liệu</span>
+                        </div>
+                        {isCollapsed ? <ChevronDown size={16} className="text-gray-500" /> : <ChevronUp size={16} className="text-gray-500" />}
+                      </button>
+                      {!isCollapsed && (
+                        <div className="px-5 pb-4 text-gray-500 text-sm">⏳ Bot cần chạy ít nhất 1 chu kỳ phân tích.</div>
+                      )}
                     </div>
                   );
 
@@ -691,19 +706,29 @@ const App = () => {
                   const srcLabel = { finnhub: 'FH', alphavantage: 'AV', marketaux: 'MA' };
 
                   return (
-                    <div key={sym} className="glass-card bg-neutral-900/50 rounded-2xl p-5 space-y-4">
-                      {/* Header */}
-                      <div className="flex items-center justify-between flex-wrap gap-2">
-                        <div className="flex items-center gap-3">
+                    <div key={sym} className="glass-card bg-neutral-900/50 rounded-2xl overflow-hidden">
+                      {/* Header — luôn hiện, click để toggle */}
+                      <button onClick={toggleCollapse} className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/3 transition-colors gap-2">
+                        <div className="flex items-center gap-3 flex-wrap">
                           <span className="font-bold text-lg">{sym}</span>
                           <span className={`px-3 py-1 rounded-full text-xs font-semibold ${strengthBadge}`}>{nd.news_strength}</span>
                           {nd.contradiction && <span className="px-2 py-1 rounded-full text-xs bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">⚠️ Mâu thuẫn</span>}
                           {nd.blackout_active && <span className="px-2 py-1 rounded-full text-xs bg-orange-500/20 text-orange-400 border border-orange-500/30">🚫 Blackout</span>}
+                          <span className={`text-lg font-bold tabular-nums ${scoreColor}`}>
+                            {(nd.sentiment_score >= 0 ? '+' : '') + (nd.sentiment_score?.toFixed(3) ?? '0.000')}
+                          </span>
                         </div>
-                        <span className="text-xs text-gray-500">
-                          📡 {nd.active_sources}/3 nguồn &nbsp;·&nbsp; 🕒 {nd.timestamp ? new Date(nd.timestamp).toLocaleTimeString('vi-VN') : 'N/A'}
-                        </span>
-                      </div>
+                        <div className="flex items-center gap-3 shrink-0">
+                          <span className="text-xs text-gray-500 hidden sm:block">
+                            📡 {nd.active_sources}/3 &nbsp;·&nbsp; 🕒 {nd.timestamp ? new Date(nd.timestamp).toLocaleTimeString('vi-VN') : 'N/A'}
+                          </span>
+                          {isCollapsed ? <ChevronDown size={16} className="text-gray-400" /> : <ChevronUp size={16} className="text-gray-400" />}
+                        </div>
+                      </button>
+
+                      {/* Collapsible content */}
+                      {!isCollapsed && (
+                      <div className="px-5 pb-5 space-y-4">
 
                       {/* Score meter */}
                       <div className="flex items-center gap-4">
@@ -810,6 +835,8 @@ const App = () => {
                         <div className="text-xs text-gray-500 bg-white/3 rounded-xl px-3 py-2 leading-relaxed">
                           {nd.summary}
                         </div>
+                      )}
+                      </div>
                       )}
                     </div>
                   );
