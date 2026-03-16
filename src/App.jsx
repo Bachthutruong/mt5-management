@@ -20,7 +20,9 @@ import {
   BarChart2,
   Newspaper,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Users,
+  Check
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
@@ -96,6 +98,12 @@ const App = () => {
   const [newsData, setNewsData] = useState({});
   const [newsCollapsed, setNewsCollapsed] = useState({ XAUUSD: true, USDJPY: true, BTCUSD: true });
 
+  // Multi-account
+  const [accounts, setAccounts] = useState([]);
+  const [activeAccountId, setActiveAccountId] = useState(null);
+  const [accountDropdownOpen, setAccountDropdownOpen] = useState(false);
+  const [switchingAccount, setSwitchingAccount] = useState(false);
+
   const fetchData = async () => {
     try {
       setLoading(true);
@@ -141,6 +149,41 @@ const App = () => {
     const newsInterval = setInterval(fetchNews, 300000); // refresh mỗi 5 phút
     return () => clearInterval(newsInterval);
   }, []);
+
+  const fetchAccounts = async () => {
+    try {
+      const res = await axios.get(`${API_BASE}/accounts`);
+      setAccounts(Array.isArray(res.data) ? res.data : []);
+      const active = res.data.find(a => a.active);
+      if (active) setActiveAccountId(active.id);
+    } catch (err) { /* silent */ }
+  };
+
+  useEffect(() => { fetchAccounts(); }, []);
+
+  // Close account dropdown on outside click
+  useEffect(() => {
+    if (!accountDropdownOpen) return;
+    const handler = () => setAccountDropdownOpen(false);
+    document.addEventListener('click', handler);
+    return () => document.removeEventListener('click', handler);
+  }, [accountDropdownOpen]);
+
+  const handleSwitchAccount = async (accountId) => {
+    if (accountId === activeAccountId || switchingAccount) return;
+    setSwitchingAccount(true);
+    setAccountDropdownOpen(false);
+    try {
+      await axios.post(`${API_BASE}/switch-account?account_id=${accountId}`);
+      setActiveAccountId(accountId);
+      setAccounts(prev => prev.map(a => ({ ...a, active: a.id === accountId })));
+      // Wait 3s for reconnect then refresh data
+      setTimeout(() => { fetchData(); setSwitchingAccount(false); }, 3000);
+    } catch (err) {
+      console.error('Switch account failed:', err);
+      setSwitchingAccount(false);
+    }
+  };
 
   const safeHistory = Array.isArray(history) ? history : [];
   const todayPnl = safeHistory.reduce((sum, trade) => sum + (trade.profit || 0), 0);
@@ -282,6 +325,44 @@ const App = () => {
               </div>
             </div>
             <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+              {/* Account Selector */}
+              {accounts.length > 0 && (
+                <div className="relative">
+                  <button
+                    onClick={() => setAccountDropdownOpen(v => !v)}
+                    className="flex items-center gap-2 px-3 py-1.5 lg:px-4 lg:py-2 bg-white/5 hover:bg-white/10 rounded-full border border-white/10 text-[10px] lg:text-sm font-medium transition-all"
+                  >
+                    {switchingAccount ? (
+                      <RefreshCw size={13} className="animate-spin text-secondary" />
+                    ) : (
+                      <Users size={13} className="text-secondary" />
+                    )}
+                    <span className="truncate max-w-[90px] sm:max-w-[140px]">
+                      {switchingAccount ? 'Đang kết nối...' : (accounts.find(a => a.id === activeAccountId)?.name || 'Select Account')}
+                    </span>
+                    <ChevronDown size={12} className={`transition-transform ${accountDropdownOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  {accountDropdownOpen && (
+                    <div className="absolute right-0 top-full mt-2 w-64 bg-neutral-900 border border-white/10 rounded-2xl shadow-2xl z-50 overflow-hidden">
+                      <div className="px-4 py-2 text-[10px] text-gray-500 uppercase tracking-wider border-b border-white/10">Chọn tài khoản</div>
+                      {accounts.map(acc => (
+                        <button
+                          key={acc.id}
+                          onClick={() => handleSwitchAccount(acc.id)}
+                          className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition-colors text-left"
+                        >
+                          <div className={`w-2 h-2 rounded-full shrink-0 ${acc.active ? 'bg-success' : 'bg-white/20'}`} />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold truncate">{acc.name}</p>
+                            <p className="text-[10px] text-gray-500">MT5: {acc.mt5_login}</p>
+                          </div>
+                          {acc.active && <Check size={14} className="text-success shrink-0" />}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="flex items-center gap-2 px-3 py-1.5 lg:px-4 lg:py-2 bg-white/5 rounded-full border border-white/10 text-[10px] lg:text-sm font-medium">
                 <div className={`w-1.5 lg:w-2 h-1.5 lg:h-2 rounded-full ${error ? 'bg-error' : 'bg-success animate-pulse'}`} />
                 <span className="truncate max-w-[80px] sm:max-w-none">{error ? 'Offline' : 'Online'}</span>
