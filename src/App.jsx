@@ -96,7 +96,7 @@ const App = () => {
   const [historyPage, setHistoryPage] = useState(1);
   const [historyRows, setHistoryRows] = useState(25);
   const [newsData, setNewsData] = useState({});
-  const [newsCollapsed, setNewsCollapsed] = useState({ XAUUSD: true, USDJPY: true, BTCUSD: true });
+  const [newsCollapsed, setNewsCollapsed] = useState({ XAUUSD: true, USDJPY: true, BTCUSD: true, ETHUSD: true });
 
   // Multi-account
   const [accounts, setAccounts] = useState([]);
@@ -752,7 +752,7 @@ const App = () => {
                   </button>
                 </div>
 
-                {['XAUUSD', 'USDJPY', 'BTCUSD'].map(sym => {
+                {['XAUUSD', 'USDJPY', 'BTCUSD', 'ETHUSD'].map(sym => {
                   const nd = newsData[sym];
                   const isCollapsed = newsCollapsed[sym] ?? true;
                   const toggleCollapse = () => setNewsCollapsed(prev => ({ ...prev, [sym]: !prev[sym] }));
